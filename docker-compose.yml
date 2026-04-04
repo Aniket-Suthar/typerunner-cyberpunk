@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"        # Host 5173 points to container Nginx port 80
+    environment:
+      - API_TARGET=http://backend:3001
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - /app/node_modules
+    depends_on:
+      - backend
