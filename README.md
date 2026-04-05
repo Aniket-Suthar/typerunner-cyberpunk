@@ -36,18 +36,6 @@ No MP3s used. We built a scratch WebAudio engine that procedurally generates a c
 - 4 Upgradable Tiers of Fighter Jets and Projectiles (Unlock the Omega Lance!).
 
 ---
-
-## 📸 Screenshots
-
-*(To be added! Create an `assets` folder in your repo, upload screenshots, and uncomment below!)*
-<!-- 
-| Main Menu | Intense Gameplay | Stats & Leaderboard |
-|:---:|:---:|:---:|
-| <img src="./assets/main-menu.png" width="300" alt="Main Menu" /> | <img src="./assets/gameplay.png" width="300" alt="Gameplay" /> | <img src="./assets/game-over.png" width="300" alt="Game Over" /> |
--->
-
----
-
 ## 🛠 Tech Stack
 
 ### Frontend Core
