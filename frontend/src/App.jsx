@@ -11,21 +11,42 @@ import { useGameEngine } from './hooks/useGameEngine';
 import { useTypingHandler } from './hooks/useTypingHandler';
 import { useWords } from './hooks/useWords';
 import { useSoundEngine } from './hooks/useSoundEngine';
+import { useMultiplayer } from './hooks/useMultiplayer';
 import MainMenu from './components/UI/MainMenu';
 import HUD from './components/UI/HUD';
 import GameTrack from './components/Game/GameTrack';
 import GameOverScreen from './components/UI/GameOverScreen';
 import Leaderboard from './components/UI/Leaderboard';
 import ParticlesBackground from './components/UI/ParticlesBackground';
+import ModeSelection from './components/UI/ModeSelection';
+import MultiplayerLobby from './components/UI/MultiplayerLobby';
+import RoomLeaderboard from './components/UI/RoomLeaderboard';
+import InGameLeaderboard from './components/UI/InGameLeaderboard';
 
 function GameApp() {
   const { state, actions, GAME_STATES: STATES } = useGameContext();
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const { getNextWord, fetchWords, resetWords } = useWords();
+  const { getNextWord, fetchWords, resetWords, setSyncedWords } = useWords();
   const wpmIntervalRef = useRef(null);
   const correctKeysRef = useRef(0);
   const startTimeRef = useRef(null);
   const sound = useSoundEngine();
+
+  const multiplayer = useMultiplayer();
+
+  // Network sync effects
+  useEffect(() => {
+    if (multiplayer.syncedWords.length > 0 && state.gameState === STATES.LOBBY) {
+      setSyncedWords(multiplayer.syncedWords);
+      handleStartGame(true); // Is multi
+    }
+  }, [multiplayer.syncedWords, state.gameState, STATES, setSyncedWords]);
+
+  useEffect(() => {
+    if (state.gameState === STATES.PLAYING && state.gameMode === 'MULTI' && multiplayer.roomData) {
+      multiplayer.reportProgress(multiplayer.roomData.roomId, state.score, state.lives > 0);
+    }
+  }, [state.score, state.lives, state.gameState, state.gameMode]);
 
   useEffect(() => { correctKeysRef.current = state.correctKeystrokes; }, [state.correctKeystrokes]);
   useEffect(() => { startTimeRef.current = state.startTime; }, [state.startTime]);
@@ -110,14 +131,22 @@ function GameApp() {
       sound.stopAmbience();
       sound.playGameOverSound();
       if (wpmIntervalRef.current) clearInterval(wpmIntervalRef.current);
+      
+      if (state.gameMode === 'MULTI' && multiplayer.roomData) {
+        multiplayer.reportFinished(multiplayer.roomData.roomId, state.score);
+      }
     }
-  }, [state.gameState, engine, STATES, sound]);
+  }, [state.gameState, engine, STATES, sound, state.gameMode]);
 
-  const handleStartGame = useCallback(() => {
+  const handleStartGame = useCallback((isMulti = false) => {
     sound.initAudio();
     resetWords();
     resetInput();
-    fetchWords(1);
+    
+    if (!isMulti) {
+      fetchWords(1);
+    }
+    
     actions.startGame();
     setShowLeaderboard(false);
     setTimeout(() => {
@@ -158,9 +187,36 @@ function GameApp() {
       <div className={`cyber-grid-bg level-bg-${tier}`} />
       <div className="scanline-overlay" />
 
-      {/* Main Menu */}
+      {/* Mode Selection */}
+      <AnimatePresence>
+        {state.gameState === STATES.MODE_SELECT && (
+          <ModeSelection 
+            onCreateRoom={(name) => multiplayer.createRoom(name, actions.joinLobby)}
+            onJoinRoom={(roomId, name) => multiplayer.joinRoom(roomId, name, actions.joinLobby)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Multiplayer Lobby */}
+      <AnimatePresence>
+        {state.gameState === STATES.LOBBY && (
+          <MultiplayerLobby
+            roomData={multiplayer.roomData}
+            socketId={multiplayer.socket?.id}
+            onStart={() => multiplayer.startGame(multiplayer.roomData.roomId)}
+            onLeave={() => {
+              multiplayer.resetMultiplayerState();
+              actions.reset();
+            }}
+            onToggleReady={() => multiplayer.toggleReady(multiplayer.roomData.roomId)}
+            error={multiplayer.error}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Main Menu for Single Player */}
       {state.gameState === STATES.IDLE && !showLeaderboard && (
-        <MainMenu onStart={handleStartGame} />
+        <MainMenu onStart={() => handleStartGame(false)} />
       )}
 
       {/* Playing State */}
@@ -177,6 +233,14 @@ function GameApp() {
             isMuted={sound.isMuted}
             onToggleMute={sound.toggleMute}
           />
+
+          {/* Dynamic Multiplayer Leaderboard */}
+          {state.gameMode === 'MULTI' && (
+             <InGameLeaderboard 
+               roomData={multiplayer.roomData} 
+               socketId={multiplayer.socket?.id} 
+             />
+          )}
 
           {/* Combo overlay — floats above everything */}
           <AnimatePresence>
@@ -306,19 +370,33 @@ function GameApp() {
 
       {/* Game Over */}
       <AnimatePresence>
-        {state.gameState === STATES.GAME_OVER && !showLeaderboard && (
+        {state.gameState === STATES.GAME_OVER && !showLeaderboard && state.gameMode === 'SINGLE' && (
           <GameOverScreen
-            onPlayAgain={handlePlayAgain}
+            onPlayAgain={() => handlePlayAgain()}
             onMainMenu={handleMainMenu}
             onShowLeaderboard={() => setShowLeaderboard(true)}
           />
         )}
       </AnimatePresence>
 
-      {/* Leaderboard */}
+      {/* Leaderboard (Single) */}
       <AnimatePresence>
-        {showLeaderboard && (
+        {showLeaderboard && state.gameMode === 'SINGLE' && (
           <Leaderboard onBack={() => setShowLeaderboard(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Room Leaderboard (Multiplayer) */}
+      <AnimatePresence>
+        {state.gameState === STATES.GAME_OVER && state.gameMode === 'MULTI' && (
+          <RoomLeaderboard
+            leaderboard={multiplayer.leaderboard}
+            socketId={multiplayer.socket?.id}
+            onBack={() => {
+               multiplayer.resetMultiplayerState();
+               actions.reset();
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

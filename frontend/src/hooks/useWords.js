@@ -9,7 +9,7 @@ import { useState, useCallback, useRef } from 'react';
 const API_BASE = '/api/words';
 
 // Fallback words in case API is unavailable — includes all difficulty tiers
-const FALLBACK_WORDS = [
+export const FALLBACK_WORDS = [
   // Easy (2-4)
   'run', 'code', 'type', 'fast', 'neon', 'glow', 'fire', 'hack',
   'byte', 'loop', 'grid', 'data', 'node', 'flux', 'core', 'void',
@@ -33,12 +33,22 @@ export function useWords() {
   const [wordQueue, setWordQueue] = useState([]);
   const isFetchingRef = useRef(false);
   const wordIndexRef = useRef(0);
+  const isMultiplayerRef = useRef(false);
+
+  /**
+   * Set words explicitly for synchronized multiplayer
+   */
+  const setSyncedWords = useCallback((words) => {
+    isMultiplayerRef.current = true;
+    setWordQueue(words);
+    wordIndexRef.current = 0;
+  }, []);
 
   /**
    * Fetch a batch of words from the API.
    */
   const fetchWords = useCallback(async (level = 1) => {
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current || isMultiplayerRef.current) return;
     isFetchingRef.current = true;
 
     try {
@@ -65,7 +75,7 @@ export function useWords() {
   const getNextWord = useCallback((level = 1) => {
     const currentIndex = wordIndexRef.current;
 
-    // If queue is running low, fetch more
+    // If queue is running low, fetch more (bypassed if MULTIPLAYER)
     if (currentIndex >= wordQueue.length - 5) {
       fetchWords(level);
     }
@@ -85,7 +95,8 @@ export function useWords() {
   const resetWords = useCallback(() => {
     setWordQueue([]);
     wordIndexRef.current = 0;
+    isMultiplayerRef.current = false;
   }, []);
 
-  return { getNextWord, fetchWords, resetWords, queueLength: wordQueue.length };
+  return { getNextWord, fetchWords, resetWords, setSyncedWords, queueLength: wordQueue.length };
 }

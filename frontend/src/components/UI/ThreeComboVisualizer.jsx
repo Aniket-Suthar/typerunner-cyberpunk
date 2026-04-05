@@ -12,13 +12,19 @@ export default function ThreeComboVisualizer({ streak = 0 }) {
     const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
     camera.position.z = 5;
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    // Keep it small as it sits in the HUD
-    renderer.setSize(120, 120);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    
-    if (mountRef.current) {
-      mountRef.current.appendChild(renderer.domElement);
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      // Keep it small as it sits in the HUD
+      renderer.setSize(120, 120);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      
+      if (mountRef.current) {
+        mountRef.current.appendChild(renderer.domElement);
+      }
+    } catch (e) {
+      console.warn('WebGLContextError: Could not initialize 3D HUD Visualizer.', e);
+      return; // Gracefully abort visualizer boot
     }
 
     // 2. Lighting
@@ -60,16 +66,20 @@ export default function ThreeComboVisualizer({ streak = 0 }) {
     let animationFrameId;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      renderer.render(scene, camera);
+      if (renderer) renderer.render(scene, camera);
     };
     animate();
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      if (mountRef.current) mountRef.current.removeChild(renderer.domElement);
+      if (renderer) {
+        if (mountRef.current && mountRef.current.contains(renderer.domElement)) {
+          mountRef.current.removeChild(renderer.domElement);
+        }
+        renderer.dispose();
+      }
       geometry.dispose();
       material.dispose();
-      renderer.dispose();
     };
   }, []);
 

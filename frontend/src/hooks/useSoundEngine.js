@@ -22,12 +22,12 @@ export function useSoundEngine() {
       audioCtxRef.current = ctx;
 
       const bgmGain = ctx.createGain();
-      bgmGain.gain.value = 0.07;
+      bgmGain.gain.value = 0.20; // Massively increased BGM volume
       bgmGain.connect(ctx.destination);
       bgmGainRef.current = bgmGain;
 
       const sfxGain = ctx.createGain();
-      sfxGain.gain.value = 0.14;
+      sfxGain.gain.value = 0.35; // Massively increased SFX volume
       sfxGain.connect(ctx.destination);
       sfxGainRef.current = sfxGain;
 
@@ -39,8 +39,8 @@ export function useSoundEngine() {
     setIsMuted((prev) => {
       const next = !prev;
       isMutedRef.current = next;
-      if (bgmGainRef.current) bgmGainRef.current.gain.value = next ? 0 : 0.07;
-      if (sfxGainRef.current) sfxGainRef.current.gain.value = next ? 0 : 0.14;
+      if (bgmGainRef.current) bgmGainRef.current.gain.value = next ? 0 : 0.20;
+      if (sfxGainRef.current) sfxGainRef.current.gain.value = next ? 0 : 0.35;
       return next;
     });
   }, []);

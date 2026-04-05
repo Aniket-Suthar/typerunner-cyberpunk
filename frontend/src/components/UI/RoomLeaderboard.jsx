@@ -1,0 +1,79 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+
+export default function RoomLeaderboard({ leaderboard, socketId, onBack }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md"
+    >
+      <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-2 border-cyber-border bg-cyber-darker rounded-2xl shadow-[0_0_50px_rgba(0,255,200,0.2)]">
+        <div className="p-8 border-b border-cyber-border bg-black/40 text-center">
+          <h2 className="text-4xl md:text-5xl font-orbitron font-black text-cyber-primary tracking-widest" style={{ textShadow: '0 0 20px #00f0ff' }}>
+            NETWORK RESULTS
+          </h2>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-8">
+          <div className="space-y-4">
+            {leaderboard ? leaderboard.map((player, index) => {
+               const isMe = player.id === socketId;
+               const isWinner = index === 0;
+
+               return (
+                 <motion.div
+                    key={player.id}
+                    initial={{ x: -50, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: index * 0.1 }}
+                    className={`flex items-center justify-between p-4 md:p-6 rounded-lg border-l-4 
+                        ${isWinner ? 'bg-yellow-900/20 border-yellow-500' : 'bg-black/40 border-cyber-border/50'}
+                        ${isMe ? 'ring-2 ring-cyber-primary' : ''}
+                    `}
+                 >
+                    <div className="flex items-center gap-6">
+                        <span className={`text-2xl font-black font-orbitron w-8 text-center
+                             ${isWinner ? 'text-yellow-500' : 'text-cyber-text'}`}>
+                           #{index + 1}
+                        </span>
+                        <div>
+                             <h3 className={`text-xl font-orbitron font-bold tracking-wider 
+                                  ${isMe ? 'text-cyber-primary' : 'text-gray-200'}
+                             `}>
+                                 {player.name} {isMe && '(YOU)'}
+                             </h3>
+                             <span className="text-xs font-mono text-gray-500 uppercase tracking-widest mt-1 block">
+                                 {player.alive ? 'SURVIVED' : 'TERMINATED'}
+                             </span>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                         <div className="text-3xl font-mono text-cyber-secondary font-black tracking-tighter">
+                            {player.score.toLocaleString()}
+                         </div>
+                         <div className="text-xs font-mono text-gray-500 mt-1 uppercase tracking-widest">
+                            PTS
+                         </div>
+                    </div>
+                 </motion.div>
+               );
+            }) : (
+               <div className="text-center font-mono text-gray-500 p-12">WAITING FOR NETWORK SYNCHRONIZATION...</div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-8 border-t border-cyber-border bg-black/40 text-center">
+            <button
+              onClick={onBack}
+              className="px-8 py-4 bg-cyber-dark border-2 border-cyber-border text-cyber-primary font-orbitron font-bold text-xl tracking-widest uppercase hover:bg-cyber-primary/10 hover:border-cyber-primary hover:shadow-[0_0_30px_#00f0ff] transition-all skew-x-[-10deg]"
+            >
+              <div className="skew-x-[10deg]">RETURN TO MAIN</div>
+            </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}

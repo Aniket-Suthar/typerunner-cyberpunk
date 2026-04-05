@@ -3,10 +3,12 @@
  * Fixed: WPM tracked via refs, endTime set properly, added combo system.
  */
 
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useMemo } from 'react';
 
 const GAME_STATES = {
+  MODE_SELECT: 'MODE_SELECT',
   IDLE: 'IDLE',
+  LOBBY: 'LOBBY',
   PLAYING: 'PLAYING',
   GAME_OVER: 'GAME_OVER',
 };
@@ -23,10 +25,13 @@ const ACTION_TYPES = {
   RESET: 'RESET',
   UPDATE_WPM: 'UPDATE_WPM',
   SET_LEVEL: 'SET_LEVEL',
+  SET_GAME_MODE: 'SET_GAME_MODE',
+  GOTO_MODE_SELECT: 'GOTO_MODE_SELECT',
+  JOIN_LOBBY: 'JOIN_LOBBY',
 };
 
 const initialState = {
-  gameState: GAME_STATES.IDLE,
+  gameState: GAME_STATES.MODE_SELECT,
   playerName: '',
   score: 0,
   lives: 3,
@@ -41,6 +46,7 @@ const initialState = {
   startTime: null,
   endTime: null,
   scoreSaved: false, // Prevent duplicate saves
+  gameMode: 'SINGLE', // 'SINGLE' or 'MULTI'
 };
 
 function gameReducer(state, action) {
@@ -48,11 +54,21 @@ function gameReducer(state, action) {
     case ACTION_TYPES.SET_PLAYER_NAME:
       return { ...state, playerName: action.payload };
 
+    case ACTION_TYPES.SET_GAME_MODE:
+      return { ...state, gameMode: action.payload, gameState: action.payload === 'MULTI' ? GAME_STATES.MODE_SELECT : GAME_STATES.IDLE };
+
+    case ACTION_TYPES.GOTO_MODE_SELECT:
+      return { ...state, gameState: GAME_STATES.MODE_SELECT };
+
+    case ACTION_TYPES.JOIN_LOBBY:
+      return { ...state, gameState: GAME_STATES.LOBBY };
+
     case ACTION_TYPES.START_GAME:
       return {
         ...initialState,
         gameState: GAME_STATES.PLAYING,
         playerName: state.playerName,
+        gameMode: state.gameMode,
         startTime: Date.now(),
       };
 
@@ -103,7 +119,7 @@ function gameReducer(state, action) {
       return { ...state, gameState: GAME_STATES.GAME_OVER, endTime: Date.now() };
 
     case ACTION_TYPES.RESET:
-      return { ...initialState, playerName: state.playerName };
+      return { ...initialState, playerName: state.playerName, gameMode: state.gameMode, gameState: state.gameMode === 'SINGLE' ? GAME_STATES.IDLE : GAME_STATES.MODE_SELECT };
 
     default:
       return state;
@@ -115,28 +131,34 @@ const GameContext = createContext(null);
 export function GameProvider({ children }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
 
-  const actions = {
-    setPlayerName: useCallback((name) =>
-      dispatch({ type: ACTION_TYPES.SET_PLAYER_NAME, payload: name }), []),
-    startGame: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.START_GAME }), []),
-    wordCompleted: useCallback((word) =>
-      dispatch({ type: ACTION_TYPES.WORD_COMPLETED, payload: word }), []),
-    loseLife: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.LOSE_LIFE }), []),
-    keyPressed: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.KEY_PRESSED }), []),
-    correctKey: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.CORRECT_KEY }), []),
-    updateWpm: useCallback((wpm) =>
-      dispatch({ type: ACTION_TYPES.UPDATE_WPM, payload: wpm }), []),
-    setLevel: useCallback((level) =>
-      dispatch({ type: ACTION_TYPES.SET_LEVEL, payload: level }), []),
-    gameOver: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.GAME_OVER }), []),
-    reset: useCallback(() =>
-      dispatch({ type: ACTION_TYPES.RESET }), []),
-  };
+  const actions = useMemo(() => ({
+    setPlayerName: (name) =>
+      dispatch({ type: ACTION_TYPES.SET_PLAYER_NAME, payload: name }),
+    startGame: () =>
+      dispatch({ type: ACTION_TYPES.START_GAME }),
+    wordCompleted: (word) =>
+      dispatch({ type: ACTION_TYPES.WORD_COMPLETED, payload: word }),
+    loseLife: () =>
+      dispatch({ type: ACTION_TYPES.LOSE_LIFE }),
+    keyPressed: () =>
+      dispatch({ type: ACTION_TYPES.KEY_PRESSED }),
+    correctKey: () =>
+      dispatch({ type: ACTION_TYPES.CORRECT_KEY }),
+    updateWpm: (wpm) =>
+      dispatch({ type: ACTION_TYPES.UPDATE_WPM, payload: wpm }),
+    setLevel: (level) =>
+      dispatch({ type: ACTION_TYPES.SET_LEVEL, payload: level }),
+    gameOver: () =>
+      dispatch({ type: ACTION_TYPES.GAME_OVER }),
+    reset: () =>
+      dispatch({ type: ACTION_TYPES.RESET }),
+    setGameMode: (mode) => 
+      dispatch({ type: ACTION_TYPES.SET_GAME_MODE, payload: mode }),
+    gotoModeSelect: () => 
+      dispatch({ type: ACTION_TYPES.GOTO_MODE_SELECT }),
+    joinLobby: () => 
+      dispatch({ type: ACTION_TYPES.JOIN_LOBBY }),
+  }), []);
 
   return (
     <GameContext.Provider value={{ state, actions, GAME_STATES }}>

@@ -1,17 +1,23 @@
-import { useCallback } from "react";
-import Particles from "react-tsparticles";
-import { loadFull } from "tsparticles";
+import { useEffect, useState } from "react";
+import Particles, { initParticlesEngine } from "@tsparticles/react";
+import { loadSlim } from "@tsparticles/slim";
 
 const ParticlesBackground = () => {
-  const particlesInit = useCallback(async (engine) => {
-    // Load full tsparticles engine to ensure we have all features (shapes, lines, hover effects)
-    await loadFull(engine);
+  const [init, setInit] = useState(false);
+
+  useEffect(() => {
+    initParticlesEngine(async (engine) => {
+      await loadSlim(engine);
+    }).then(() => {
+      setInit(true);
+    });
   }, []);
+
+  if (!init) return null;
 
   return (
     <Particles
       id="tsparticles"
-      init={particlesInit}
       options={{
         fullScreen: { enable: true, zIndex: -1 },
         fpsLimit: 60,
