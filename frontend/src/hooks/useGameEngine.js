@@ -15,8 +15,7 @@ const BASE_SPEED = 0.55;          // Comfortable start
 const SPEED_INCREMENT = 0.22;     // Strong speed increase per level
 const BASE_SPAWN_INTERVAL = 2800; // ms between spawns
 const MIN_SPAWN_INTERVAL = 700;
-const SPAWN_REDUCTION = 280;      // Aggressive spawn rate increase
-const LEVEL_UP_WORDS = 3;         // FAST level ups — see evolution quickly
+const SPAWN_REDUCTION = 200;      // Spawn rate increase
 const MIN_LANE_GAP_Y = 75;        // Minimum Y gap between words in same lane
 
 let wordIdCounter = 0;
@@ -146,6 +145,8 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
 
     // Update word positions
     setActiveWords((prev) => {
+      if (prev.length === 0) return prev;
+
       const updated = [];
       const missed = [];
 
@@ -176,6 +177,7 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
 
     // Update particles
     setParticles((prev) => {
+      if (prev.length === 0) return prev;
       return prev
         .map((p) => ({
           ...p,
@@ -186,6 +188,12 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
           size: p.size * 0.97,
         }))
         .filter((p) => p.life > 0);
+    });
+
+    // Update lasers
+    setLasers((prev) => {
+       if (prev.length === 0) return prev;
+       return prev;
     });
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -243,7 +251,11 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
 
     // Level up check
     wordsCompletedInLevelRef.current += 1;
-    if (wordsCompletedInLevelRef.current >= LEVEL_UP_WORDS) {
+    
+    // Dynamically scale level up requirement so audio doesn't surround and crash the browser
+    const requiredWordsToLevelUp = 4 + (currentLevelRef.current * 2);
+
+    if (wordsCompletedInLevelRef.current >= requiredWordsToLevelUp) {
       wordsCompletedInLevelRef.current = 0;
       currentLevelRef.current += 1;
       onLevelUp?.(currentLevelRef.current);
