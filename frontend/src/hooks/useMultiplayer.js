@@ -158,6 +158,7 @@ export function useMultiplayer() {
            delete playersMap[conn.peer];
            delete connectionsRef.current[conn.peer];
            updatePlayersAndBroadcast(playersMap);
+           checkGameFinished(playersMap); // Safely checks and forces completion if last player left
          }
       });
     });
