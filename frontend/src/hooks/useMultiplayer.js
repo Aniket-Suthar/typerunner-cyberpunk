@@ -20,7 +20,26 @@ export function useMultiplayer() {
   const roomDataRef = useRef(null);
   const broadcastThrottleRef = useRef(0);
   const lastScoreRef = useRef(-1);
+  // Debounce buffer for joinee progress updates
+  const pendingProgressRef = useRef(null);
+  const progressTimerRef = useRef(null);
 
+  // Helper: send pending progress after debounce interval
+  const flushPendingProgress = () => {
+    if (!pendingProgressRef.current) return;
+    const { score, alive } = pendingProgressRef.current;
+    if (connRef.current?.open) {
+      console.log(`[P2P Joinee] 📤 Flushed debounced progress: ${score}, alive=${alive}`);
+      connRef.current.send({ type: 'player_progress', score, alive });
+    }
+    pendingProgressRef.current = null;
+    progressTimerRef.current = null;
+  };
+
+  const scheduleProgressFlush = () => {
+    if (progressTimerRef.current) return; // already scheduled
+    progressTimerRef.current = setTimeout(flushPendingProgress, 200); // 200 ms debounce
+  };
   useEffect(() => {
     roomDataRef.current = roomData;
   }, [roomData]);
@@ -333,6 +352,12 @@ export function useMultiplayer() {
 
   const resetMultiplayerState = useCallback(() => {
     if (peerRef.current) peerRef.current.destroy();
+    // Clear any pending debounce timers
+    if (progressTimerRef.current) {
+      clearTimeout(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+    pendingProgressRef.current = null;
     setSocketId(null);
     setRoomData(null);
     setSyncedWords([]);
