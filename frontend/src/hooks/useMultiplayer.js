@@ -18,6 +18,9 @@ export function useMultiplayer() {
 
   // Maintain active ref to roomData to avoid stale closures in Peer callbacks
   const roomDataRef = useRef(null);
+  const broadcastThrottleRef = useRef(0);
+  const lastScoreRef = useRef(-1);
+
   useEffect(() => {
     roomDataRef.current = roomData;
   }, [roomData]);
@@ -32,11 +35,14 @@ export function useMultiplayer() {
   }, []);
 
   const broadcastToRoom = useCallback((type, payload) => {
+    let packetCount = 0;
     Object.values(connectionsRef.current).forEach(conn => {
       if (conn.open) {
         conn.send({ type, ...payload });
+        packetCount++;
       }
     });
+    console.log(`[P2P Serverless] 📡 Broadcasted '${type}' packet to ${packetCount} peers.`);
   }, []);
 
   const updatePlayersAndBroadcast = useCallback((playersMap) => {
@@ -77,6 +83,7 @@ export function useMultiplayer() {
     peerRef.current = peer;
 
     peer.on('open', (id) => {
+      console.log(`[P2P Engine] 🚀 HOST Node created securely. Peer ID: ${id}`);
       setIsConnected(true);
       setSocketId(id);
       
@@ -132,6 +139,7 @@ export function useMultiplayer() {
                playersMap[conn.peer].alive = data.alive;
                if (!data.alive) playersMap[conn.peer].finished = true;
                
+               console.log(`[P2P Host] 📥 Received Progress from ${conn.peer} - Score: ${data.score}`);
                // Lightweight broadcast
                broadcastToRoom('player_update', { playerId: conn.peer, score: data.score, alive: data.alive });
                
@@ -164,6 +172,7 @@ export function useMultiplayer() {
     });
 
     peer.on('error', (err) => {
+       console.error('[P2P SERVER PROTOCOL ERROR] The WebRTC connection threw a terminal error:', err);
        setError('P2P SERVER PROTOCOL ERROR: ' + err.message);
     });
 
@@ -178,6 +187,7 @@ export function useMultiplayer() {
     peerRef.current = peer;
 
     peer.on('open', (id) => {
+      console.log(`[P2P Engine] 🔗 JOINEE Node resolved. Connecting to Host ID: ${targetPeerId}`);
       setIsConnected(true);
       setSocketId(id);
       
@@ -185,6 +195,7 @@ export function useMultiplayer() {
       connRef.current = conn;
 
       conn.on('open', () => {
+         console.log(`[P2P Engine] ✅ Direct WebRTC connection to Host confirmed! Handshaking...`);
          // Auto handshake
          conn.send({ type: 'join_request', playerName });
       });
@@ -226,12 +237,14 @@ export function useMultiplayer() {
       });
 
       conn.on('close', () => {
+         console.warn(`[P2P Link Warning] Host closed the connection socket permanently.`);
          setIsConnected(false);
          setError('LINK DISCONNECTED: Host terminated session.');
       });
     });
 
     peer.on('error', (err) => {
+       console.error('[P2P UPLINK ERROR]', err);
        setError('P2P UPLINK ERROR: ' + err.message);
     });
 
@@ -257,6 +270,21 @@ export function useMultiplayer() {
   }, [broadcastToRoom]);
 
   const reportProgress = useCallback((roomId, score, alive) => {
+     // [EXTREME OPTIMIZATION]: Throttle logic. 
+     // We cannot blast the P2P connection 50 times a second if there are 10 players typing constantly.
+     // It will trigger massive React tree re-renders and blackout the browser.
+     const now = Date.now();
+     const isDeathEvent = !alive;
+     const scoreChanged = score !== lastScoreRef.current;
+     
+     // Only broadcast if the player died OR if the score updated and 250ms have passed.
+     if (!isDeathEvent && (!scoreChanged || now - broadcastThrottleRef.current < 250)) {
+        return; // Suppress packet to save CPU
+     }
+     
+     broadcastThrottleRef.current = now;
+     lastScoreRef.current = score;
+
      // If host: mutate own state and broadcast
      if (peerRef.current?.id === roomDataRef.current?.host) {
         const room = roomDataRef.current;
@@ -269,11 +297,13 @@ export function useMultiplayer() {
            playersMap[myId].alive = alive;
            if (!alive) playersMap[myId].finished = true;
            
+           console.log(`[P2P Host System] 📤 Throttled Self-Broadcast. Score: ${score}`);
            broadcastToRoom('player_update', { playerId: myId, score, alive });
            checkGameFinished(playersMap);
         }
      } else if (connRef.current?.open) {
         // If joinee: send to host
+        console.log(`[P2P Joinee System] 📤 Emitting Data Packet to Host. Score: ${score}`);
         connRef.current.send({ type: 'player_progress', score, alive });
      }
   }, [broadcastToRoom, checkGameFinished]);

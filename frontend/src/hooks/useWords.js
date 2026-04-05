@@ -45,24 +45,30 @@ export function useWords() {
   }, []);
 
   /**
-   * Fetch a batch of words from the API.
+   * Generates a batch of words locally for the serverless architecture.
    */
-  const fetchWords = useCallback(async (level = 1) => {
+  const fetchWords = useCallback((level = 1) => {
     if (isFetchingRef.current || isMultiplayerRef.current) return;
     isFetchingRef.current = true;
+    
+    console.log(`[useWords] 🔄 Generating local words for Level ${level} (API Bypassed)`);
 
     try {
-      const response = await fetch(`${API_BASE}?level=${level}&count=30`);
-      if (!response.ok) throw new Error('API unavailable');
-      const json = await response.json();
-
-      if (json.success && json.data) {
-        setWordQueue((prev) => [...prev, ...json.data.map((w) => w.word)]);
-      }
-    } catch {
-      // Use fallback words if API is down
+      // Create a deterministic pseudo-shuffle based on time to ensure true randomness
       const shuffled = [...FALLBACK_WORDS].sort(() => Math.random() - 0.5);
-      setWordQueue((prev) => [...prev, ...shuffled.slice(0, 30)]);
+      
+      // Inject some dynamic chaos depending on the level
+      if (level >= 3) {
+        shuffled.reverse(); 
+      }
+      
+      const newBatch = shuffled.slice(0, 30);
+      setWordQueue((prev) => {
+        console.log(`[useWords] ✅ Injected ${newBatch.length} new words. Total Queued: ${prev.length + newBatch.length}`);
+        return [...prev, ...newBatch];
+      });
+    } catch (e) {
+      console.error('[useWords] ❌ FATAL ERROR in word generation sequence:', e);
     } finally {
       isFetchingRef.current = false;
     }
