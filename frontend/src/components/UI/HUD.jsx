@@ -6,7 +6,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import ThreeComboVisualizer from './ThreeComboVisualizer';
 
 export default function HUD({ score, lives, maxLives, currentStreak, wpm, level, wordsCompleted, isMuted, onToggleMute }) {
   const [prevScore, setPrevScore] = useState(score);
@@ -43,11 +42,6 @@ export default function HUD({ score, lives, maxLives, currentStreak, wpm, level,
         borderBottom: '1px solid rgba(0, 240, 255, 0.1)',
       }}
     >
-      {/* 3D Combo Visualizer Background Element */}
-      <div className="absolute right-0 top-12 md:top-8 pointer-events-none opacity-80 mix-blend-screen scale-75 md:scale-100 origin-right">
-        <ThreeComboVisualizer streak={currentStreak} />
-      </div>
-
       {/* Left: Score & Words */}
       <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between md:justify-start">
         <div className="text-center md:text-left">
