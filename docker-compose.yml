@@ -13,6 +13,13 @@ services:
       - ./backend:/app
       - /app/node_modules
 
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 2s
+
   frontend:
     build:
       context: ./frontend
@@ -25,4 +32,6 @@ services:
     volumes:
       - /app/node_modules
     depends_on:
-      - backend
+      backend:
+         condition: service_healthy
+    restart: unless-stopped

@@ -182,9 +182,7 @@ function GameApp() {
   const tier = state.level <= 2 ? 1 : state.level <= 4 ? 2 : state.level <= 6 ? 3 : 4;
 
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      <ParticlesBackground />
-      <div className={`cyber-grid-bg level-bg-${tier}`} />
+    <div className="relative w-full h-full overflow-hidden bg-[#030308]">
       <div className="scanline-overlay" />
 
       {/* Mode Selection */}
@@ -282,8 +280,8 @@ function GameApp() {
             <div className="w-full max-w-4xl h-full" data-track>
               <GameTrack
                 activeWords={engine.activeWords}
-                particles={engine.particles}
-                lasers={engine.lasers}
+                particlesRef={engine.particlesRef}
+                lasersRef={engine.lasersRef}
                 isShaking={engine.isShaking}
                 trackHeight={engine.trackHeight}
                 dangerZoneY={engine.dangerZoneY}

@@ -22,8 +22,6 @@ let wordIdCounter = 0;
 
 export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
   const [activeWords, setActiveWords] = useState([]);
-  const [particles, setParticles] = useState([]);
-  const [lasers, setLasers] = useState([]);
   const [isShaking, setIsShaking] = useState(false);
   const [jetLane, setJetLane] = useState(1); // Fighter jet current lane (0,1,2)
 
@@ -34,6 +32,13 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
   const wordsCompletedInLevelRef = useRef(0);
   const currentLevelRef = useRef(1);
   const activeWordsRef = useRef([]);
+
+  // High-performance refs for transient visuals
+  const particlesRef = useRef([]);
+  const lasersRef = useRef([]);
+
+  // Particle pooling for GC optimization
+  const particlePoolRef = useRef([]);
 
   // Keep ref in sync for spawn collision avoidance
   useEffect(() => { activeWordsRef.current = activeWords; }, [activeWords]);
@@ -92,27 +97,32 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
     setActiveWords((prev) => [...prev, newWord]);
   }, [getNextWord, getCurrentSpeed, pickSafeLane]);
 
-  /** Create explosion particles */
+  /** Create explosion particles with pooling */
   const createParticles = useCallback((x, y, color = '#00f0ff', count = 16) => {
-    const newParticles = [];
+    const now = Date.now();
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
       const velocity = 2 + Math.random() * 4;
-      newParticles.push({
-        id: `p_${Date.now()}_${i}_${Math.random()}`,
-        x,
-        y,
-        vx: Math.cos(angle) * velocity,
-        vy: Math.sin(angle) * velocity,
-        life: 1.0,
-        color,
-        size: 2 + Math.random() * 5,
-      });
+
+      let p = particlePoolRef.current.pop();
+      if (!p) {
+        p = { id: 0, x: 0, y: 0, vx: 0, vy: 0, life: 1, color: '', size: 0 };
+      }
+
+      p.id = `p_${now}_${i}_${Math.random()}`;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * velocity;
+      p.vy = Math.sin(angle) * velocity;
+      p.life = 1.0;
+      p.color = color;
+      p.size = 2 + Math.random() * 5;
+
+      particlesRef.current.push(p);
     }
-    setParticles((prev) => [...prev, ...newParticles]);
   }, []);
 
-  /** Fire a laser from the jet to a word position */
+  /** Fire a laser */
   const fireLaser = useCallback((fromLane, toX, toY) => {
     const laser = {
       id: `laser_${Date.now()}_${Math.random()}`,
@@ -121,17 +131,19 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
       toY,
       life: 1.0,
     };
-    setLasers((prev) => [...prev, laser]);
+    lasersRef.current.push(laser);
     // Auto-remove after animation
-    setTimeout(() => {
-      setLasers((prev) => prev.filter((l) => l.id !== laser.id));
+    const t = setTimeout(() => {
+      lasersRef.current = lasersRef.current.filter((l) => l.id !== laser.id);
     }, 400);
+    return () => clearTimeout(t);
   }, []);
 
   /** Trigger screen shake */
   const triggerShake = useCallback(() => {
     setIsShaking(true);
-    setTimeout(() => setIsShaking(false), 400);
+    const t = setTimeout(() => setIsShaking(false), 400);
+    return () => clearTimeout(t);
   }, []);
 
   /** Main game loop */
@@ -165,7 +177,7 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
 
       // Handle missed words — schedule callbacks outside of setState
       if (missed.length > 0) {
-        setTimeout(() => {
+        const t = setTimeout(() => {
           for (const word of missed) {
             onWordMissed?.(word);
           }
@@ -175,26 +187,27 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
       return updated;
     });
 
-    // Update particles
-    setParticles((prev) => {
-      if (prev.length === 0) return prev;
-      return prev
-        .map((p) => ({
-          ...p,
-          x: p.x + p.vx,
-          y: p.y + p.vy,
-          vy: p.vy + 0.08,
-          life: p.life - 0.025,
-          size: p.size * 0.97,
-        }))
-        .filter((p) => p.life > 0);
-    });
+    // Update particles (Direct mutation of Ref, Three.js reads this)
+    const activeParticles = [];
+    for (const p of particlesRef.current) {
+      p.x += p.vx * deltaTime;
+      p.y += p.vy * deltaTime;
+      p.vy += 0.08 * deltaTime;
+      p.life -= 0.025 * deltaTime;
+      p.size *= 0.97;
+
+      if (p.life > 0) {
+        activeParticles.push(p);
+      } else {
+        particlePoolRef.current.push(p);
+      }
+    }
+    particlesRef.current = activeParticles;
 
     // Update lasers
-    setLasers((prev) => {
-       if (prev.length === 0) return prev;
-       return prev;
-    });
+    for (const l of lasersRef.current) {
+      l.life -= 0.05 * deltaTime;
+    }
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
   }, [onWordMissed]);
@@ -218,8 +231,8 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
     wordsCompletedInLevelRef.current = 0;
     lastTimeRef.current = 0;
     setActiveWords([]);
-    setParticles([]);
-    setLasers([]);
+    particlesRef.current = [];
+    lasersRef.current = [];
     setJetLane(1);
 
     animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -294,8 +307,8 @@ export function useGameEngine({ onWordMissed, onLevelUp, getNextWord }) {
 
   return {
     activeWords,
-    particles,
-    lasers,
+    particlesRef,
+    lasersRef,
     isShaking,
     jetLane,
     startEngine,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Peer } from 'peerjs';
 import { FALLBACK_WORDS } from './useWords'; 
 
@@ -16,6 +16,30 @@ export function useMultiplayer() {
   const [error, setError] = useState('');
   const [isConnected, setIsConnected] = useState(false);
 
+  // Helper: Synchronously update state and ref with structural equality check
+  const updateRoomData = useCallback((newData) => {
+    if (!newData) {
+      setRoomData(null);
+      roomDataRef.current = null;
+      return;
+    }
+
+    setRoomData(prev => {
+      // Deep Check: Only update if structural data changed to prevent infinite loops
+      const playersChanged = JSON.stringify(prev?.players) !== JSON.stringify(newData.players);
+      const stateChanged = prev?.state !== newData.state;
+      const hostChanged = prev?.host !== newData.host;
+
+      if (!playersChanged && !stateChanged && !hostChanged && prev?.roomId === newData.roomId) {
+        return prev; // Return original reference to avoid re-render
+      }
+
+      const merged = { ...prev, ...newData };
+      roomDataRef.current = merged; // Synchronous update to ref
+      return merged;
+    });
+  }, []);
+
   // Maintain active ref to roomData to avoid stale closures in Peer callbacks
   const roomDataRef = useRef(null);
   const broadcastThrottleRef = useRef(0);
@@ -23,6 +47,7 @@ export function useMultiplayer() {
   // Debounce buffer for joinee progress updates
   const pendingProgressRef = useRef(null);
   const progressTimerRef = useRef(null);
+  const lastUpdateRef = useRef(0);
 
   // Helper: send pending progress after debounce interval
   const flushPendingProgress = () => {
@@ -40,10 +65,6 @@ export function useMultiplayer() {
     if (progressTimerRef.current) return; // already scheduled
     progressTimerRef.current = setTimeout(flushPendingProgress, 200); // 200 ms debounce
   };
-  useEffect(() => {
-    roomDataRef.current = roomData;
-  }, [roomData]);
-
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -66,27 +87,29 @@ export function useMultiplayer() {
 
   const updatePlayersAndBroadcast = useCallback((playersMap) => {
     const playersArr = Object.values(playersMap);
-    setRoomData(prev => ({ ...prev, players: playersArr }));
+    updateRoomData({ ...roomDataRef.current, players: playersArr });
     broadcastToRoom('room_update', { players: playersArr, host: roomDataRef.current?.host });
-  }, [broadcastToRoom]);
+  }, [broadcastToRoom, updateRoomData]);
 
   const checkGameFinished = useCallback((playersMap) => {
       const room = roomDataRef.current;
       if (!room || room.state !== 'PLAYING') {
-         setRoomData(prev => ({ ...prev, players: Object.values(playersMap) }));
+         updateRoomData({ ...room, players: Object.values(playersMap) });
          return;
       }
       
-      const allFinished = Object.values(playersMap).every(p => p.finished);
-      setRoomData(prev => ({ ...prev, players: Object.values(playersMap) }));
-
+      const playersArr = Object.values(playersMap);
+      const allFinished = playersArr.every(p => p.finished);
+      
       if (allFinished) {
-         setRoomData(prev => ({ ...prev, state: 'FINISHED' }));
-         const leaderboardArr = Object.values(playersMap).sort((a,b) => b.score - a.score);
+         updateRoomData({ ...room, players: playersArr, state: 'FINISHED' });
+         const leaderboardArr = playersArr.sort((a,b) => b.score - a.score);
          setLeaderboard(leaderboardArr);
          broadcastToRoom('room_game_over', { leaderboard: leaderboardArr });
+      } else {
+         updateRoomData({ ...room, players: playersArr });
       }
-  }, [broadcastToRoom]);
+  }, [broadcastToRoom, updateRoomData]);
 
   const createRoom = useCallback((playerName, onJoin) => {
     setError('');
@@ -109,7 +132,7 @@ export function useMultiplayer() {
       const hostState = { id, name: playerName || 'HACKER', score: 0, alive: true, finished: false, isReady: true };
       const initialRoom = { roomId, host: id, state: 'LOBBY', players: [hostState] };
       
-      setRoomData(initialRoom);
+      updateRoomData(initialRoom);
       roomDataRef.current = initialRoom;
       
       if (onJoin) onJoin({ success: true, roomId, host: id, isHost: true });
@@ -183,9 +206,12 @@ export function useMultiplayer() {
          if (room) {
            const playersMap = room.players.reduce((acc, p) => ({...acc, [p.id]: p}), {});
            delete playersMap[conn.peer];
-           delete connectionsRef.current[conn.peer];
+           if (connectionsRef.current[conn.peer]) {
+             connectionsRef.current[conn.peer].close();
+             delete connectionsRef.current[conn.peer];
+           }
            updatePlayersAndBroadcast(playersMap);
-           checkGameFinished(playersMap); // Safely checks and forces completion if last player left
+           checkGameFinished(playersMap); 
          }
       });
     });
@@ -225,21 +251,25 @@ export function useMultiplayer() {
                if (onJoin) onJoin({ success: true, roomId: data.roomId, host: data.host, isHost: false });
                break;
             case 'room_update':
-               setRoomData(prev => ({
-                 ...(prev || {}),
-                 roomId: prev?.roomId || roomId,
-                 host: data.host,
-                 players: data.players
-               }));
+               const now = Date.now();
+               if (now - lastUpdateRef.current < 100) return; // Throttle to 10fps
+               lastUpdateRef.current = now;
+                updateRoomData({
+                  roomId: roomDataRef.current?.roomId || roomId,
+                  host: data.host,
+                  players: data.players
+                });
                break;
             case 'player_update':
-               setRoomData(prev => {
-                  if (!prev) return prev;
-                  const newPlayers = prev.players.map(p => 
-                    p.id === data.playerId ? { ...p, score: data.score, alive: data.alive } : p
-                  );
-                  return { ...prev, players: newPlayers };
-               });
+               const pNow = Date.now();
+               if (pNow - lastUpdateRef.current < 50) return; // Throttle to 20fps for specific updates
+               lastUpdateRef.current = pNow;
+                const prev = roomDataRef.current;
+                if (!prev) return;
+                const newPlayers = prev.players.map(p => 
+                  p.id === data.playerId ? { ...p, score: data.score, alive: data.alive } : p
+                );
+                updateRoomData({ ...prev, players: newPlayers });
                break;
             case 'game_started':
                setSyncedWords(data.words);
@@ -272,7 +302,7 @@ export function useMultiplayer() {
   const startGame = useCallback((roomId) => {
      const room = roomDataRef.current;
      if (room && room.host === peerRef.current?.id) {
-       setRoomData(prev => ({ ...prev, state: 'PLAYING' }));
+        updateRoomData({ ...room, state: 'PLAYING' });
        
        // Pre-generate pseudo-random fallback words locally
        // Generate 15 full loops to ensure they don't run out fast.
@@ -350,23 +380,33 @@ export function useMultiplayer() {
      }
   }, []);
 
-  const resetMultiplayerState = useCallback(() => {
-    if (peerRef.current) peerRef.current.destroy();
-    // Clear any pending debounce timers
+   const resetMultiplayerState = useCallback(() => {
+    Object.values(connectionsRef.current).forEach(conn => {
+      if (conn.open) conn.close();
+    });
+    connectionsRef.current = {};
+    if (connRef.current?.open) connRef.current.close();
+    connRef.current = null;
+    
+    if (peerRef.current) {
+      peerRef.current.destroy();
+      peerRef.current = null;
+    }
+    
     if (progressTimerRef.current) {
       clearTimeout(progressTimerRef.current);
       progressTimerRef.current = null;
     }
     pendingProgressRef.current = null;
     setSocketId(null);
-    setRoomData(null);
+    updateRoomData(null);
     setSyncedWords([]);
     setLeaderboard(null);
     setError('');
     setIsConnected(false);
-  }, []);
+  }, [updateRoomData]);
 
-  return {
+  return useMemo(() => ({
     socket: { id: socketId }, // Legacy map for UI compatibility
     isConnected,
     roomData,
@@ -380,5 +420,5 @@ export function useMultiplayer() {
     reportFinished,
     toggleReady,
     resetMultiplayerState
-  };
+  }), [socketId, isConnected, roomData, syncedWords, leaderboard, error, createRoom, joinRoom, startGame, reportProgress, reportFinished, toggleReady, resetMultiplayerState]);
 }

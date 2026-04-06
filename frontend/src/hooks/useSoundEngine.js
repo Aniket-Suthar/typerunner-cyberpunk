@@ -58,6 +58,12 @@ export function useSoundEngine() {
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + duration);
     osc.connect(g);
     g.connect(target);
+    
+    osc.onended = () => {
+      osc.disconnect();
+      g.disconnect();
+    };
+
     osc.start(ctx.currentTime + delay);
     osc.stop(ctx.currentTime + delay + duration);
   }, []);
@@ -84,6 +90,12 @@ export function useSoundEngine() {
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18 + tier * 0.04);
     osc.connect(g);
     g.connect(dest);
+
+    osc.onended = () => {
+      osc.disconnect();
+      g.disconnect();
+    };
+
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.25 + tier * 0.05);
 
@@ -115,6 +127,12 @@ export function useSoundEngine() {
     g.gain.setValueAtTime(0.12, ctx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
     osc.connect(g); g.connect(dest);
+
+    osc.onended = () => {
+      osc.disconnect();
+      g.disconnect();
+    };
+
     osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.45);
 
     const bufSize = ctx.sampleRate * 0.15;
@@ -126,7 +144,14 @@ export function useSoundEngine() {
     noise.buffer = buf;
     ng.gain.setValueAtTime(0.06, ctx.currentTime);
     ng.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-    noise.connect(ng); ng.connect(dest); noise.start(ctx.currentTime);
+    noise.connect(ng); ng.connect(dest); 
+
+    noise.onended = () => {
+      noise.disconnect();
+      ng.disconnect();
+    };
+
+    noise.start(ctx.currentTime);
 
     playNote(50, 'sawtooth', 0.35, 0.05, 0.04, dest);
   }, [playNote]);
@@ -261,6 +286,13 @@ export function useSoundEngine() {
           mg.gain.linearRampToValueAtTime(0.015, now + 0.01);
           mg.gain.exponentialRampToValueAtTime(0.001, now + bt * 0.5);
           mo.connect(mf); mf.connect(mg); mg.connect(bgmGain);
+
+          mo.onended = () => {
+            mo.disconnect();
+            mf.disconnect();
+            mg.disconnect();
+          };
+
           mo.start(now); mo.stop(now + bt);
         }
       }
@@ -270,8 +302,10 @@ export function useSoundEngine() {
       
       const timeToNext = (nextBeatTimeRef.current - ctx.currentTime) * 1000;
       const timeoutId = setTimeout(playNextBeat, Math.max(0, timeToNext - 20));
-      bgmIntervalsRef.current = [timeoutId, () => { isPlaying = false; }];
+      bgmIntervalsRef.current.push(timeoutId);
     };
+
+    bgmIntervalsRef.current = [() => { isPlaying = false; }];
 
     nextBeatTimeRef.current = ctx.currentTime;
     playNextBeat();
